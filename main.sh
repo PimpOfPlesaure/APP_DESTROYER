@@ -1,22 +1,17 @@
 #!/bin/bash
 
-# -----------------------------------------------------------------
-# |                                                               |
-# |         WELCOME TO THE GREAT ALEXANDER APP CLEANER           |
-# |                                                               |
-# -----------------------------------------------------------------
 
-clear
 echo "-----------------------------------------------------------------"
 echo "|                                                               |"
-echo "|         WELCOME TO THE GREAT ALEXANDER APP CLEANER           |"
+echo "|         WELCOME TO THE GREAT ALEXANDER APP DESTROYER           |"
 echo "|                                                               |"
 echo "-----------------------------------------------------------------"
 echo ""
 
-# --- Mod Seçimi ---
+#------------------------ we have to select a delete method for the target  -----------------------
+
 echo " What do you want to evaporate?"
-echo ""
+echo "Select the target method:"
 echo "  [1] Application  → full purge, bundle ID + all traces"
 echo "  [2] File/Folder  → target + related cache/log traces"
 echo ""
@@ -32,13 +27,13 @@ echo " Give me the name of the shit that we need to evaporate !"
 echo ""
 read -r -p ">>> " prompt
 
-# --- Input Control ---
+# -------------------------- Input Control --------------------------------------------------
 if [[ -z "$prompt" ]]; then
     echo "Prompt cannot be empty!"
     exit 1
 fi
 
-# --- Normalizasyon ---
+# ----------------------------- mini regex show for the prompt normalization  ---------------
 query="$(
     sed 's/^[[:space:]]*//;s/[[:space:]]*$//' <<< "$prompt" \
     | tr '[:upper:]' '[:lower:]' \
@@ -60,8 +55,9 @@ echo ""
 found_items=()
 
 # =================================================================
-# MOD 1 — APPLICATION MODE
+# MOD 1 — APPLICATION MODE---------------------- Searching dirs for the method 1--------------------
 # =================================================================
+
 if [[ "$mode" == "1" ]]; then
 
     search_dirs=(
@@ -97,10 +93,11 @@ if [[ "$mode" == "1" ]]; then
             if [[ "$norm_name" == *"$piece"* ]]; then
                 found_items+=("$path")
             fi
-        done < <(find "$dir" -maxdepth 3 2>/dev/null)
+        done < <(find "$dir" -maxdepth 4 2>/dev/null)
     done
+    #---------------------- MAXDEPTH NORMALLY 3 BUT WE CAN TRY EVERY SHIT ON THIS-------------------
 
-    # --- Bundle ID Tespiti ---
+    # ------------ DETECTING BUNDLE ID CAUSE WE NEED TO TRACE BACK EVERY FILE AND DIR --------------
     bundle_ids=()
 
     for path in "${found_items[@]}"; do
@@ -115,7 +112,8 @@ if [[ "$mode" == "1" ]]; then
         fi
     done
 
-    # --- mdfind ile Derin Tarama ---
+    #-------AFTER WE FOUND THE BUNDLE ID'S OF THE TARGER WE SEARCH DEEP INTO THAT SHIT---------------
+    
     echo "[*] Running deep scan with mdfind..."
     echo ""
 
@@ -135,7 +133,7 @@ if [[ "$mode" == "1" ]]; then
     done < <(mdfind "$query" -onlyin "$HOME/Library" 2>/dev/null)
 
 # =================================================================
-# MOD 2 — FILE/FOLDER MODE
+# MOD 2 — FILE/FOLDER MODE ------------------- IN THIS MODE WE SEARCH FOR BASIC FILE TREES----------
 # =================================================================
 elif [[ "$mode" == "2" ]]; then
 
@@ -313,4 +311,71 @@ fi
 echo "[✓] Confirmed. Initiating secure wipe..."
 echo ""
 
-echo "test"
+# --- Secure Wipe Function ---
+secure_wipe() {
+    local target="$1"
+
+    if [[ -f "$target" ]]; then
+        file_size=$(stat -f%z "$target" 2>/dev/null)
+
+        if [[ "$file_size" -gt 0 ]]; then
+            key=$(openssl rand -hex 32)
+            iv=$(openssl rand -hex 16)
+            tmp_file="${target}.wipe_tmp"
+
+            openssl enc -aes-256-cbc -K "$key" -iv "$iv" \
+                -in "$target" -out "$tmp_file" 2>/dev/null
+
+            if [[ -f "$tmp_file" ]]; then
+                cat "$tmp_file" > "$target" 2>/dev/null
+                rm -f "$tmp_file"
+            fi
+
+            unset key
+            unset iv
+        fi
+
+        # Dosya adını randomize et
+        random_name=$(openssl rand -hex 8)
+        dir_path=$(dirname "$target")
+        mv "$target" "$dir_path/$random_name" 2>/dev/null
+        rm -f "$dir_path/$random_name"
+        echo "  [✓] Wiped: $target"
+
+    elif [[ -d "$target" ]]; then
+        while IFS= read -r file; do
+            secure_wipe "$file"
+        done < <(find "$target" -type f 2>/dev/null)
+
+        rm -rf "$target"
+        echo "  [✓] Removed dir: $target"
+    fi
+}
+
+
+# --- Wipe Başlat ---
+echo "================================================================="
+echo "  INITIATING SECURE WIPE"
+echo "================================================================="
+echo ""
+
+wipe_count=0
+fail_count=0
+
+for item in "${safe_items[@]}"; do
+    if [[ -e "$item" ]]; then
+        secure_wipe "$item"
+        ((wipe_count++))
+    else
+        echo "  [!] Already gone: $item"
+        ((fail_count++))
+    fi
+done
+
+echo ""
+echo "================================================================="
+echo "  WIPE COMPLETE"
+echo "  Wiped  : $wipe_count items"
+echo "  Skipped: $fail_count items (already missing)"
+echo "================================================================="
+echo ""
