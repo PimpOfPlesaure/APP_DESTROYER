@@ -8,7 +8,7 @@ echo "|                                                               |"
 echo "-----------------------------------------------------------------"
 echo ""
 
-#------------------------ we have to select a delete method for the target  -----------------------
+#------------------------ WE HAVE TO SELECT A METHOD FOR THE TARGET FİLE  -----------------------
 
 echo " What do you want to evaporate?"
 echo "Select the target method:"
@@ -27,13 +27,13 @@ echo " Give me the name of the shit that we need to evaporate !"
 echo ""
 read -r -p ">>> " prompt
 
-# -------------------------- Input Control --------------------------------------------------
+# -------------------------- INPUT CONTROL --------------------------------------------------
 if [[ -z "$prompt" ]]; then
     echo "Prompt cannot be empty!"
     exit 1
 fi
 
-# ----------------------------- mini regex show for the prompt normalization  ---------------
+# ----------------------------- MINI REGEX SHOW FOR THE INPUT NORMALIZATION  ---------------
 query="$(
     sed 's/^[[:space:]]*//;s/[[:space:]]*$//' <<< "$prompt" \
     | tr '[:upper:]' '[:lower:]' \
@@ -55,7 +55,7 @@ echo ""
 found_items=()
 
 # =================================================================
-# MOD 1 — APPLICATION MODE---------------------- Searching dirs for the method 1--------------------
+# MOD 1 — APPLICATION MODE---------------------- WE TREAT FİLES DİFFRENTLY --------------------
 # =================================================================
 
 if [[ "$mode" == "1" ]]; then
@@ -93,7 +93,7 @@ if [[ "$mode" == "1" ]]; then
             if [[ "$norm_name" == *"$piece"* ]]; then
                 found_items+=("$path")
             fi
-        done < <(find "$dir" -maxdepth 4 2>/dev/null)
+        done < <(find "$dir" -maxdepth 3 2>/dev/null)
     done
     #---------------------- MAXDEPTH NORMALLY 3 BUT WE CAN TRY EVERY SHIT ON THIS-------------------
 
@@ -112,7 +112,7 @@ if [[ "$mode" == "1" ]]; then
         fi
     done
 
-    #-------AFTER WE FOUND THE BUNDLE ID'S OF THE TARGER WE SEARCH DEEP INTO THAT SHIT---------------
+    #-------AFTER WE FOUND THE BUNDLE ID OF THE TARGET WE SEARCH DEEP INTO THAT SHIT---------------
     
     echo "[*] Running deep scan with mdfind..."
     echo ""
@@ -150,7 +150,7 @@ elif [[ "$mode" == "2" ]]; then
     echo "[*] Scanning for file/folder..."
     echo ""
 
-    # --- Hedef Dosya/Klasörü Bul ---
+    # ----------------------- FIND THE TARGET FILE/FOLDER ----------------
     for dir in "${file_search_dirs[@]}"; do
         [[ -d "$dir" ]] || continue
         while IFS= read -r path; do
@@ -164,7 +164,7 @@ elif [[ "$mode" == "2" ]]; then
 
     echo ""
 
-    # --- Cache / Log / Trace Taraması ---
+    # ------------------- CACHE / LOG / TRACE SEARCH ---------------------
     echo "[*] Scanning for related cache and log traces..."
     echo ""
 
@@ -190,7 +190,7 @@ elif [[ "$mode" == "2" ]]; then
         done < <(find "$dir" -maxdepth 4 2>/dev/null)
     done
 
-    # --- mdfind ile Derin Tarama ---
+    # ------------------- DEEP SEARCH WİTH MDFIND -----------------------
     echo ""
     echo "[*] Running deep scan with mdfind..."
     echo ""
@@ -202,7 +202,7 @@ elif [[ "$mode" == "2" ]]; then
 fi
 
 # =================================================================
-# ORTAK DEVAM — Deduplicate, Safety Filter, Preview, Confirm
+# FINAL CONJUCT PROCESS — Deduplicate, Safety Filter, Preview, Confirm
 # =================================================================
 
 # --- Deduplicate ---
@@ -215,7 +215,7 @@ done < <(printf '%s\n' "${found_items[@]}" | sort -u)
 echo "[✓] Discovery complete. Found ${#unique_items[@]} items."
 echo ""
 
-# --- Bulunanları Listele ---
+# -------------------- LIST IT THE FOUND ITEMS -----------------
 echo "[*] Found items:"
 echo ""
 for item in "${unique_items[@]}"; do
@@ -223,7 +223,7 @@ for item in "${unique_items[@]}"; do
 done
 echo ""
 
-# --- Safety Filter ---
+# ------------------- SAFEY FILTER FOR UNTOUCHBLE DIRS  ----------------
 safe_items=()
 rejected_items=()
 
@@ -273,14 +273,14 @@ for item in "${safe_items[@]}"; do
 done
 echo ""
 
-# --- Preview & Confirm ---
+# ----------------- Preview & Confirm the things that we collected ------------
 echo "================================================================="
 echo "  ITEMS SCHEDULED FOR PERMANENT DELETION"
 echo "================================================================="
 echo ""
 
 total_size=0
-
+# ----------------- we measuring the size of the files that we're going to evaporate -------------
 for item in "${safe_items[@]}"; do
     if [[ -e "$item" ]]; then
         size=$(du -sk "$item" 2>/dev/null | awk '{print $1}')
@@ -311,7 +311,8 @@ fi
 echo "[✓] Confirmed. Initiating secure wipe..."
 echo ""
 
-# --- Secure Wipe Function ---
+# ---------------- SECURE WIPE FUNCTION -----------------
+# ---------------- CAUTION THIS FUNCTION FUCKS DEEP AND WIPES AS FUCK LIKE THAT NEVER EXIST ---------------
 secure_wipe() {
     local target="$1"
 
@@ -335,7 +336,7 @@ secure_wipe() {
             unset iv
         fi
 
-        # Dosya adını randomize et
+        # ------------------ RANDOMIZE THE FOLDER NAME -----------------------
         random_name=$(openssl rand -hex 8)
         dir_path=$(dirname "$target")
         mv "$target" "$dir_path/$random_name" 2>/dev/null
@@ -353,7 +354,9 @@ secure_wipe() {
 }
 
 
-# --- Wipe Başlat ---
+# ----------------------- USING WIPE FUNC AFTER WE GET PERMISSION -------------------------
+# ----------------------- ALREADY WE CAREFULLY COLLECTED WHAT WE'RE GOING TO DELETE--------
+# ----------------------- STARTING A LOOP INTO THAT----------------------------------------
 echo "================================================================="
 echo "  INITIATING SECURE WIPE"
 echo "================================================================="
