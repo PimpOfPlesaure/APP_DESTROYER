@@ -8,7 +8,7 @@ from rich.prompt import Prompt
 from rich.text import Text
 from rich.spinner import Spinner
 from rich.live import Live
-
+import time
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SEARCH_SCRIPT = os.path.join(BASE_DIR, "search.sh")
 WIPER_SCRIPT = os.path.join(BASE_DIR, "wiper.sh")
@@ -20,7 +20,7 @@ def ask(prompt_text):
     value = Prompt.ask(prompt_text).strip()
     if value.upper() == "EXIT":
         console.print()
-        console.print("[yellow]Goodbye.[/yellow]")
+        console.print("[yellow]--------------GOODBYE PUSSY--------------[/yellow]")
         sys.exit(0)
     return value
 
@@ -72,8 +72,8 @@ def get_query(mode):
 def run_search(mode, query):
     console.print()
     console.print(Panel(
-        f"[bold green]Scanning for:[/bold green] [white]{query}[/white]\n"
-        f"[bold green]Mode:[/bold green] [white]{'Application' if mode == '1' else 'File/Folder'}[/white]",
+        f"[bold green]--SCANING FOR--:[/bold green] [white]{query}[/white]\n"
+        f"[bold green]--MODE--:[/bold green] [white]{'Application' if mode == '1' else 'File/Folder'}[/white]",
         border_style="green",
         padding=(1, 4)
     ))

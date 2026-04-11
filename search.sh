@@ -1,150 +1,151 @@
 #!/bin/bash
 
+# =================================================================
+# THE GREAT ALEXANDER - ADVANCED SEARCH ENGINE (V2)
+# =================================================================
+
 mode="$1"
-prompt="$2"
+query_raw="$2"
 
-# --- Normalizasyon ---
-query="$(sed 's/^[[:space:]]*//;s/[[:space:]]*$//' <<< "$prompt" | tr '[:upper:]' '[:lower:]' | tr -s ' ')"
-
-norm_it() {
-    echo "$1" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]//g'
+# --- Helper: Normalize String ---
+# Sadece küçük harfe çevirir ve gereksiz boşlukları temizler. 
+# Eskisi gibi tüm karakterleri silmiyoruz ki nokta ve tireler (bundle id'ler) korunsun.
+normalize() {
+    echo "$1" | tr '[:upper:]' '[:lower:]' | xargs
 }
 
-piece="$(norm_it "$query")"
+query="$(normalize "$query_raw")"
 
-found_items=()
+# --- Global Found List ---
+declare -a found_items
 
-# =================================================================
-# MOD 1 — APPLICATION MODE
-# =================================================================
-if [[ "$mode" == "1" ]]; then
-
-    search_dirs=(
-        "/Applications"
-        "/Applications/Utilities"
-        "/System/Applications"
-        "/System/Applications/Utilities"
-        "$HOME/Applications"
-        "$HOME/Library/Application Support"
-        "$HOME/Library/Preferences"
-        "$HOME/Library/Caches"
-        "$HOME/Library/Logs"
-        "$HOME/Library/Containers"
-        "$HOME/Library/Group Containers"
-        "$HOME/Library/Saved Application State"
-        "$HOME/Library/LaunchAgents"
-        "/Library/Application Support"
-        "/Library/Preferences"
-        "/Library/Caches"
-        "/Library/Logs"
-        "/Library/Extensions"
-        "/Library/LaunchAgents"
-        "/Library/LaunchDaemons"
-    )
-
-    for dir in "${search_dirs[@]}"; do
-        [[ -d "$dir" ]] || continue
-        while IFS= read -r path; do
-            norm_name="$(norm_it "$(basename "$path")")"
-            [[ "$norm_name" == *"$piece"* ]] && found_items+=("$path")
-        done < <(find "$dir" -maxdepth 3 2>/dev/null)
-    done
-
-    bundle_ids=()
-    for path in "${found_items[@]}"; do
-        if [[ "$path" == *.app ]]; then
-            info_plist="$path/Contents/Info.plist"
-            if bundle_id=$(defaults read "$info_plist" CFBundleIdentifier 2>/dev/null); then
-                bundle_ids+=("$bundle_id")
-                echo "[LOG] Found app: $path" >&2
-                echo "[LOG] Bundle ID: $bundle_id" >&2
-            fi
-        fi
-    done
-
-    for bundle_id in "${bundle_ids[@]}"; do
-        while IFS= read -r path; do
-            found_items+=("$path")
-        done < <(mdfind "kMDItemCFBundleIdentifier == '$bundle_id'" 2>/dev/null)
-
-        while IFS= read -r path; do
-            found_items+=("$path")
-        done < <(mdfind "$bundle_id" 2>/dev/null)
-    done
-
-    while IFS= read -r path; do
-        found_items+=("$path")
-    done < <(mdfind "$query" -onlyin "$HOME/Library" 2>/dev/null)
-
-# =================================================================
-# MOD 2 — FILE/FOLDER MODE
-# =================================================================
-elif [[ "$mode" == "2" ]]; then
-
-    file_search_dirs=(
-        "$HOME/Desktop"
-        "$HOME/Documents"
-        "$HOME/Downloads"
-        "$HOME/Movies"
-        "$HOME/Music"
-        "$HOME/Pictures"
-        "$HOME"
-    )
-
-    for dir in "${file_search_dirs[@]}"; do
-        [[ -d "$dir" ]] || continue
-        while IFS= read -r path; do
-            norm_name="$(norm_it "$(basename "$path")")"
-            [[ "$norm_name" == *"$piece"* ]] && found_items+=("$path")
-        done < <(find "$dir" -maxdepth 5 2>/dev/null)
-    done
-
-    cache_dirs=(
-        "$HOME/Library/Caches"
-        "$HOME/Library/Logs"
-        "$HOME/Library/Application Support"
-        "$HOME/Library/Saved Application State"
-        "$HOME/Library/Containers"
-        "$HOME/Library/Group Containers"
-        "/Library/Caches"
-        "/Library/Logs"
-    )
-
-    for dir in "${cache_dirs[@]}"; do
-        [[ -d "$dir" ]] || continue
-        while IFS= read -r path; do
-            norm_name="$(norm_it "$(basename "$path")")"
-            [[ "$norm_name" == *"$piece"* ]] && found_items+=("$path")
-        done < <(find "$dir" -maxdepth 4 2>/dev/null)
-    done
-
-    while IFS= read -r path; do
-        found_items+=("$path")
-    done < <(mdfind "$query" -onlyin "$HOME" 2>/dev/null)
-
-fi
-
-# =================================================================
-# Deduplicate + Safety Filter → stdout'a yaz
-# =================================================================
-
-protected_paths=(
-    "/System" "/usr" "/bin" "/sbin" "/etc" "/var"
-    "/private/var" "/private/etc" "/cores" "/dev" "/opt"
-)
-
+# --- Safety: Protected Paths ---
 is_protected() {
     local item="$1"
-    for protected in "${protected_paths[@]}"; do
-        if [[ "$item" == "$protected" || "$item" == "$protected/"* ]]; then
+    local protected_roots=(
+        "/System" "/usr" "/bin" "/sbin" "/etc" "/var" "/private"
+        "/Library/Apple" "/Library/System" "/Library/Audio"
+        "/Applications/Safari.app" "/Applications/Utilities"
+        "/Applications/App Store.app" "/Applications/Finder.app"
+    )
+    
+    for root in "${protected_roots[@]}"; do
+        if [[ "$item" == "$root" || "$item" == "$root/"* ]]; then
             return 0
         fi
     done
     return 1
 }
 
+# =================================================================
+# MODE 1: APPLICATION MODE (High Precision)
+# =================================================================
+if [[ "$mode" == "1" ]]; then
+    echo "[LOG] Identifying main application bundles..." >&2
+    
+    # 1. Önce ana .app paketlerini bulalım
+    app_bundles=()
+    search_locations=(
+        "/Applications"
+        "/System/Applications"
+        "$HOME/Applications"
+    )
+
+    for loc in "${search_locations[@]}"; do
+        [[ -d "$loc" ]] || continue
+        # Tam eşleşme veya başlangıç eşleşmesi arıyoruz
+        while IFS= read -r app_path; do
+            app_name="$(basename "$app_path" .app)"
+            norm_app_name="$(normalize "$app_name")"
+            
+            # Sadece uygulama ismi sorguyu içeriyorsa alıyoruz (daha güvenli)
+            if [[ "$norm_app_name" == *"$query"* ]]; then
+                app_bundles+=("$app_path")
+                found_items+=("$app_path")
+            fi
+        done < <(find "$loc" -maxdepth 2 -name "*.app" 2>/dev/null)
+    done
+
+    # 2. Bulunan bundle'ların ID'lerini çıkarıp sistem genelinde iz sürelim
+    for bundle in "${app_bundles[@]}"; do
+        info_plist="$bundle/Contents/Info.plist"
+        if [[ -f "$info_plist" ]]; then
+            bundle_id=$(defaults read "$info_plist" CFBundleIdentifier 2>/dev/null)
+            if [[ -n "$bundle_id" ]]; then
+                echo "[LOG] Deep scanning for Bundle ID: $bundle_id" >&2
+                
+                # Metadata araması (en hızlı ve kesin yol)
+                while IFS= read -r path; do
+                    found_items+=("$path")
+                done < <(mdfind "kMDItemCFBundleIdentifier == '$bundle_id'" 2>/dev/null)
+                
+                # Klasik kütüphane yolları (Bundle ID ile)
+                lib_paths=(
+                    "$HOME/Library/Application Support/$bundle_id"
+                    "$HOME/Library/Caches/$bundle_id"
+                    "$HOME/Library/Caches/$(echo "$bundle_id" | tr '[:upper:]' '[:lower:]')"
+                    "$HOME/Library/Preferences/$bundle_id.plist"
+                    "$HOME/Library/Containers/$bundle_id"
+                    "$HOME/Library/Group Containers/$bundle_id"
+                    "$HOME/Library/Saved Application State/$bundle_id.savedState"
+                    "$HOME/Library/Logs/$bundle_id"
+                    "$HOME/Library/WebKit/$bundle_id"
+                    "/Library/Application Support/$bundle_id"
+                    "/Library/Caches/$bundle_id"
+                    "/Library/Preferences/$bundle_id.plist"
+                )
+                for lp in "${lib_paths[@]}"; do
+                    [[ -e "$lp" ]] && found_items+=("$lp")
+                done
+            fi
+        fi
+    done
+
+    # 3. İsim bazlı kütüphane taraması (Sadece spesifik yerlerde)
+    # Bu aşamada "Spot" ararsak "Hotspot" bulmaması için regex kullanıyoruz.
+    echo "[LOG] Scanning library for named traces..." >&2
+    lib_search_dirs=(
+        "$HOME/Library/Application Support"
+        "$HOME/Library/Caches"
+        "$HOME/Library/Logs"
+        "/Library/Application Support"
+    )
+    for lsd in "${lib_search_dirs[@]}"; do
+        [[ -d "$lsd" ]] || continue
+        # Kelime sınırları içinde aramayı simüle ediyoruz (grep -i)
+        while IFS= read -r path; do
+            found_items+=("$path")
+        done < <(find "$lsd" -maxdepth 2 -iname "*$query*" 2>/dev/null)
+    done
+
+# =================================================================
+# MODE 2: FILE/FOLDER MODE (Path Based)
+# =================================================================
+elif [[ "$mode" == "2" ]]; then
+    echo "[LOG] Searching for files/folders matching: $query" >&2
+    
+    # Doğrudan kullanıcı alanlarında mdfind kullanımı (hızlı)
+    while IFS= read -r path; do
+        found_items+=("$path")
+    done < <(mdfind -name "$query" 2>/dev/null)
+
+    # Eğer query bir path ise doğrudan ekle
+    if [[ -e "$query_raw" ]]; then
+        found_items+=("$query_raw")
+    fi
+fi
+
+# =================================================================
+# CLEANUP & OUTPUT
+# =================================================================
+
+# Duplicate'leri temizle, korunan yolları filtrele ve exist kontrolü yap
 printf '%s\n' "${found_items[@]}" | sort -u | while IFS= read -r item; do
-    if ! is_protected "$item"; then
-        echo "$item"
+    [[ -z "$item" ]] && continue
+    if [[ -e "$item" ]] && ! is_protected "$item"; then
+        # Son bir güvenlik: Sadece dosya veya klasörse (device vs değilse) yazdır
+        if [[ -f "$item" || -d "$item" ]]; then
+            echo "$item"
+        fi
     fi
 done

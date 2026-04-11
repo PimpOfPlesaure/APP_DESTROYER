@@ -63,7 +63,7 @@ done
 echo ""
 echo "================================================================="
 echo "  WIPE COMPLETE"
-echo "  Wiped  : $wipe_count items"
+echo "  Wiped and fucked  : $wipe_count items"
 echo "  Skipped: $fail_count items (already missing)"
 echo "================================================================="
 echo ""
